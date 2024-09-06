@@ -66,9 +66,8 @@ jobs:
         run: |
           export PATH="$GITHUB_WORKSPACE/depot_tools:${PATH}"
           cp args.linux.${{ matrix.platform }}.gn $GITHUB_WORKSPACE/v8/out.gn/${{ matrix.platform }}.release/args.gn
-          git clone https://github.com/nlohmann/json.git
-          cp json/include/nlohmann/json.hpp $GITHUB_WORKSPACE/v8/src/json.hpp
           cd $GITHUB_WORKSPACE/v8
+          cp $GITHUB_WORKSPACE/json.hpp src/json.hpp
           python3 build/linux/sysroot_scripts/install-sysroot.py --arch=${{ matrix.platform }}
           gn gen out.gn/${{ matrix.platform }}.release
           ninja -j 4  v8_monolith -C out.gn/${{ matrix.platform }}.release/
