@@ -35,9 +35,9 @@ jobs:
           export PATH="$GITHUB_WORKSPACE/depot_tools:${PATH}"
           cd $GITHUB_WORKSPACE/v8
           git checkout e29c028f391389a7a60ee37097e3ca9e396d6fa4
-          git apply "$GITHUB_WORKSPACE/dom_storage_v8_patch.diff"
-          git apply "$GITHUB_WORKSPACE/dom_storage_blink_patch.diff"
           git apply "$GITHUB_WORKSPACE/panoptichrome_patches.diff"
+          git apply "$GITHUB_WORKSPACE/dom_storage_blink_patch.diff"
+          git apply "$GITHUB_WORKSPACE/dom_storage_v8_patch.diff"
           gclient sync
           mkdir -p out.gn/${{ matrix.platform }}.release/
       - name: Compress headers
