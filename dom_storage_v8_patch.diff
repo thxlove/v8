@@ -151,9 +151,6 @@ index 86585cf..0dc10b4 100644
  bool Value::FullIsUndefined() const {
    i::Handle<i::Object> object = Utils::OpenHandle(this);
    bool result = object->IsUndefined();
-diff --git a/src/builtins/builtins-api.cc b/src/builtins/builtins-api.cc
-index f160d7c..2a870b1 100644
-
 diff --git a/src/interpreter/bytecode-generator.cc b/src/interpreter/bytecode-generator.cc
 index 94c1594..331244f 100644
 --- a/src/interpreter/bytecode-generator.cc
