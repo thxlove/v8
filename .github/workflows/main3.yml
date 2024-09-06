@@ -1,0 +1,98 @@
+name: build and publish v8 libs
+on:
+  release:
+    types:
+      - published
+
+env:
+  V8_VERSION: "test"
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+
+  build-linux:
+#    if: ${{ false }}  # disable
+    name: linux
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [x64]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      - name: setup v8 build tools
+        run: |
+          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
+          export PATH="$GITHUB_WORKSPACE/depot_tools:${PATH}"
+          gclient
+          fetch v8
+      - name: fetch beta branch
+        run: |
+          export PATH="$GITHUB_WORKSPACE/depot_tools:${PATH}"
+          cd $GITHUB_WORKSPACE/v8
+          git checkout e29c028f391389a7a60ee37097e3ca9e396d6fa4
+          git apply "$GITHUB_WORKSPACE/panoptichrome_patches.diff"
+          git apply "$GITHUB_WORKSPACE/dom_storage_v8_patch.diff"
+          git apply "$GITHUB_WORKSPACE/dom_storage_blink_patch.diff"
+          gclient sync
+          mkdir -p out.gn/${{ matrix.platform }}.release/
+      - name: Compress headers
+        run: |
+          tar -zcvf include.tar.gz v8/include
+      - name: Upload headers
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ${{ github.workspace }}/include.tar.gz
+          asset_name: include.tar.gz
+          asset_content_type: application/gzip
+      - name: Compress source
+        run: |
+          tar -zcvf src.tar.gz v8/src
+      - name: Upload source
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ${{ github.workspace }}/src.tar.gz
+          asset_name: src.tar.gz
+          asset_content_type: application/gzip
+      - name: build v8 static library
+        run: |
+          export PATH="$GITHUB_WORKSPACE/depot_tools:${PATH}"
+          cp args.linux.${{ matrix.platform }}.gn $GITHUB_WORKSPACE/v8/out.gn/${{ matrix.platform }}.release/args.gn
+          cd $GITHUB_WORKSPACE/v8
+          build/linux/sysroot_scripts/install-sysroot.py --arch=${{ matrix.platform }}
+          gn gen out.gn/${{ matrix.platform }}.release
+          ninja -j 4  v8_monolith -C out.gn/${{ matrix.platform }}.release/
+      - name: Compress static library
+        run: |
+          gzip -9 -c ${{ github.workspace }}/v8/out.gn/${{ matrix.platform }}.release/obj/libv8_monolith.a > libv8_monolith-linux-${{ matrix.platform }}.a.gz
+      - name: Upload static library
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: libv8_monolith-linux-${{ matrix.platform }}.a.gz
+          asset_name: libv8_monolith-linux-${{ matrix.platform }}.a.gz
+          asset_content_type: application/gzip
+      - name: Compress generated source
+        run: |
+          tar -zcvf gen-linux-${{ matrix.platform }}.tar.gz v8/out.gn/${{ matrix.platform }}.release/gen
+      - name: Upload generated source
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ${{ github.workspace }}/gen-linux-${{ matrix.platform }}.tar.gz
+          asset_name: gen-linux-${{ matrix.platform }}.tar.gz
+          asset_content_type: application/gzip
