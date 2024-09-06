@@ -13,10 +13,10 @@ defaults:
 
 jobs:
 
-  build-windows:
+  build-linux:
 #    if: ${{ false }}  # disable
-    name: windows
-    runs-on: windows-latest
+    name: linux
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:
@@ -24,60 +24,77 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-      - name: Setup python
-        uses: actions/setup-python@v2
-        with:
-          python-version: 3.10
-      - name: Install MSVC/MCBuild (Windows)
-        uses: microsoft/setup-msbuild@v1.0.2
       - name: setup v8 build tools
-        shell: pwsh
         run: |
           git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
-          echo "$pwd/depot_tools" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          echo "DEPOT_TOOLS_WIN_TOOLCHAIN=0" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-      - name: fetch v8 source
-        run: |
-          export DEPOT_TOOLS_WIN_TOOLCHAIN=0
+          export PATH="$GITHUB_WORKSPACE/depot_tools:${PATH}"
           gclient
           fetch v8
-          cd v8
+      - name: fetch beta branch
+        run: |
+          export PATH="$GITHUB_WORKSPACE/depot_tools:${PATH}"
+          cd $GITHUB_WORKSPACE/v8
           git checkout e29c028f391389a7a60ee37097e3ca9e396d6fa4
           git apply "../panoptichrome_patches.diff"
           git apply "../dom_storage_v8_patch.diff"
           git apply "../dom_storage_blink_patch.diff"
           gclient sync
-      - name: build v8 static library
-        shell: pwsh
+          mkdir -p out.gn/${{ matrix.platform }}.release/
+      - name: Compress headers
         run: |
-          Set-Location -Path v8
-          New-Item -ItemType directory -Path ./out.gn/${{ matrix.platform }}.release/
-          Copy-Item "../args.win.${{ matrix.platform }}.gn" -Destination "./out.gn/${{ matrix.platform }}.release/args.gn" -force          
+          tar -zcvf include.tar.gz v8/include
+      - name: Upload headers
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ${{ github.workspace }}/include.tar.gz
+          asset_name: include.tar.gz
+          asset_content_type: application/gzip
+      - name: Compress source
+        run: |
+          tar -zcvf src.tar.gz v8/src
+      - name: Upload source
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ${{ github.workspace }}/src.tar.gz
+          asset_name: src.tar.gz
+          asset_content_type: application/gzip
+      - name: build v8 static library
+        run: |
+          export PATH="$GITHUB_WORKSPACE/depot_tools:${PATH}"
+          cp args.linux.${{ matrix.platform }}.gn $GITHUB_WORKSPACE/v8/out.gn/${{ matrix.platform }}.release/args.gn
+          cd $GITHUB_WORKSPACE/v8
+          build/linux/sysroot_scripts/install-sysroot.py --arch=${{ matrix.platform }}
           gn gen out.gn/${{ matrix.platform }}.release
           ninja -j 4  v8_monolith -C out.gn/${{ matrix.platform }}.release/
       - name: Compress static library
-        shell: pwsh
         run: |
-          Compress-Archive -Path v8/out.gn/${{ matrix.platform }}.release/obj/v8_monolith.lib -Destination libv8_monolith-win-${{ matrix.platform }}.zip
+          gzip -9 -c ${{ github.workspace }}/v8/out.gn/${{ matrix.platform }}.release/obj/libv8_monolith.a > libv8_monolith-linux-${{ matrix.platform }}.a.gz
       - name: Upload static library
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          asset_path: libv8_monolith-win-${{ matrix.platform }}.zip
-          asset_name: libv8_monolith-win-${{ matrix.platform }}.zip
-          asset_content_type: application/zip
+          asset_path: libv8_monolith-linux-${{ matrix.platform }}.a.gz
+          asset_name: libv8_monolith-linux-${{ matrix.platform }}.a.gz
+          asset_content_type: application/gzip
       - name: Compress generated source
-        shell: pwsh
         run: |
-          Compress-Archive -Path v8/out.gn/${{ matrix.platform }}.release/gen -Destination gen-win-${{ matrix.platform }}.zip
+          tar -zcvf gen-linux-${{ matrix.platform }}.tar.gz v8/out.gn/${{ matrix.platform }}.release/gen
       - name: Upload generated source
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ${{ github.workspace }}/gen-win-${{ matrix.platform }}.zip
+          asset_path: ${{ github.workspace }}/gen-linux-${{ matrix.platform }}.tar.gz
+          asset_name: gen-linux-${{ matrix.platform }}.tar.gz
+          asset_content_type: application/gzip
           asset_name: gen-win-${{ matrix.platform }}.zip
           asset_content_type: application/zip
