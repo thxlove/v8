@@ -1,0 +1,83 @@
+name: build and publish v8 libs
+on:
+  release:
+    types:
+      - published
+
+env:
+  V8_VERSION: "12.9"
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+
+  build-windows:
+#    if: ${{ false }}  # disable
+    name: windows
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [x64]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      - name: Setup python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.10
+      - name: Install MSVC/MCBuild (Windows)
+        uses: microsoft/setup-msbuild@v1.0.2
+      - name: setup v8 build tools
+        shell: pwsh
+        run: |
+          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
+          echo "$pwd/depot_tools" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          echo "DEPOT_TOOLS_WIN_TOOLCHAIN=0" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: fetch v8 source
+        run: |
+          export DEPOT_TOOLS_WIN_TOOLCHAIN=0
+          gclient
+          fetch v8
+          cd v8
+          git checkout e29c028f391389a7a60ee37097e3ca9e396d6fa4
+          git apply "../panoptichrome_patches.diff"
+          git apply "../dom_storage_v8_patch.diff"
+          git apply "../dom_storage_blink_patch.diff"
+          gclient sync
+      - name: build v8 static library
+        shell: pwsh
+        run: |
+          Set-Location -Path v8
+          New-Item -ItemType directory -Path ./out.gn/${{ matrix.platform }}.release/
+          Copy-Item "../args.win.${{ matrix.platform }}.gn" -Destination "./out.gn/${{ matrix.platform }}.release/args.gn" -force          
+          gn gen out.gn/${{ matrix.platform }}.release
+          ninja -j 4  v8_monolith -C out.gn/${{ matrix.platform }}.release/
+      - name: Compress static library
+        shell: pwsh
+        run: |
+          Compress-Archive -Path v8/out.gn/${{ matrix.platform }}.release/obj/v8_monolith.lib -Destination libv8_monolith-win-${{ matrix.platform }}.zip
+      - name: Upload static library
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: libv8_monolith-win-${{ matrix.platform }}.zip
+          asset_name: libv8_monolith-win-${{ matrix.platform }}.zip
+          asset_content_type: application/zip
+      - name: Compress generated source
+        shell: pwsh
+        run: |
+          Compress-Archive -Path v8/out.gn/${{ matrix.platform }}.release/gen -Destination gen-win-${{ matrix.platform }}.zip
+      - name: Upload generated source
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ${{ github.workspace }}/gen-win-${{ matrix.platform }}.zip
+          asset_name: gen-win-${{ matrix.platform }}.zip
+          asset_content_type: application/zip
