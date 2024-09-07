@@ -5470,7 +5470,7 @@ index 0000000..06cfd98
 +      : isolate_(isolate),
 +        scope_(scope),
 +        scope_statements_(NULL),
-+        stack_limit_(stack_limit_ = isolate->stack_guard()->real_climit()) {}
++        stack_limit_(isolate->stack_guard()->real_climit()) {}
 +
 +  virtual ~ASTVisitor() {}
 +
